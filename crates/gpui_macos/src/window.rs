@@ -2892,6 +2892,10 @@ extern "C" fn handle_view_event(this: &AnyObject, _: Sel, native_event: *mut Any
                 },
             ) => {
                 // On mac, a ctrl-left click should be handled as a right click.
+                // An activating one still marks the press that brought the window forward,
+                // and clears the flag, so it cannot leave it set to swallow the next left click.
+                let first_mouse = lock.first_mouse;
+                lock.first_mouse = false;
                 *event = MouseDownEvent {
                     button: MouseButton::Right,
                     modifiers: Modifiers {
@@ -2899,21 +2903,15 @@ extern "C" fn handle_view_event(this: &AnyObject, _: Sel, native_event: *mut Any
                         ..event.modifiers
                     },
                     click_count: 1,
+                    first_mouse,
                     ..*event
                 };
             }
 
-            // Handles focusing click.
-            PlatformInput::MouseDown(
-                event @ MouseDownEvent {
-                    button: MouseButton::Left,
-                    ..
-                },
-            ) if (lock.first_mouse) => {
-                *event = MouseDownEvent {
-                    first_mouse: true,
-                    ..*event
-                };
+            // Handles focusing click, whatever its button: the flag marks only the very next
+            // press, so an activating right press neither pastes nor swallows a later left click.
+            PlatformInput::MouseDown(event) if (lock.first_mouse) => {
+                event.first_mouse = true;
                 lock.first_mouse = false;
             }
 

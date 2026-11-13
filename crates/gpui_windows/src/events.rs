@@ -86,13 +86,7 @@ impl WindowsWindowInner {
         lparam: LPARAM,
     ) -> LRESULT {
         let handled = match msg {
-            // `DefWindowProc` answers `MA_NOACTIVATE` for a left click on `HTCAPTION`.
-            // The activation is only triggered when `DefWindowProc` handles the following `WM_NCLBUTTONDOWN`.
-            // The GPUI event is dispatched in between, so a click handler runs while `active_window` is still
-            // whichever window was active before the click. If that handler consumes the
-            // press, `DefWindowProc` never sees it, so the window is never activated at all.
-            // So, let's eagerly activate the window.
-            WM_MOUSEACTIVATE => Some(MA_ACTIVATE as isize),
+            WM_MOUSEACTIVATE => self.handle_mouse_activate_msg(lparam),
             WM_ACTIVATE => self.handle_activate_msg(wparam),
             WM_CREATE => self.handle_create_msg(handle),
             WM_MOVE => self.handle_move_msg(handle, lparam),
@@ -476,6 +470,16 @@ impl WindowsWindowInner {
         Some(0)
     }
 
+    /// Marks the coming mouse-down, whatever its button, as the press that brought the window
+    /// forward when the click landed on the client area. `None` leaves the activation answer to
+    /// `DefWindowProc`, so a `WS_EX_NOACTIVATE` window is never activated and the click is never eaten.
+    fn handle_mouse_activate_msg(&self, lparam: LPARAM) -> Option<isize> {
+        if lparam.loword() as u32 == HTCLIENT {
+            self.state.pending_first_mouse.set(true);
+        }
+        None
+    }
+
     fn handle_mouse_down_msg(
         &self,
         handle: HWND,
@@ -491,6 +495,7 @@ impl WindowsWindowInner {
         let y = lparam.signed_hiword();
         let physical_point = point(DevicePixels(x as i32), DevicePixels(y as i32));
         let click_count = self.state.click_state.update(button, physical_point);
+        let first_mouse = self.state.pending_first_mouse.replace(false);
         let scale_factor = self.state.scale_factor.get();
 
         let input = PlatformInput::MouseDown(MouseDownEvent {
@@ -498,7 +503,7 @@ impl WindowsWindowInner {
             position: logical_point(x as f32, y as f32, scale_factor),
             modifiers: current_modifiers(),
             click_count,
-            first_mouse: false,
+            first_mouse,
         });
         let handled = !func(input).propagate;
         self.state.callbacks.input.set(Some(func));
