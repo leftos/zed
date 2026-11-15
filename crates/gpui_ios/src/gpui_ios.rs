@@ -8,7 +8,7 @@
 pub mod ios;
 
 #[cfg(target_os = "ios")]
-pub use ios::{IosPlatform, current_platform};
+pub use ios::{IosPlatform, current_platform, register_delegate_classes};
 
 /// The foreground color used by the iOS status bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

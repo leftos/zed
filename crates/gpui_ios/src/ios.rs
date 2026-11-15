@@ -47,6 +47,7 @@ impl<T> CallbackSlot<T> {
     }
 }
 
+pub use application::register_delegate_classes;
 pub(crate) use display::*;
 pub use platform::*;
 pub use window::set_status_bar_style;

@@ -64,10 +64,20 @@ pub(super) fn run(platform: &Rc<IosPlatformState>, on_finish_launching: Box<dyn 
         .application
         .finish_launching
         .set(on_finish_launching);
-    // UIKit can restore a scene delegate by class name without asking for a new configuration.
-    SceneDelegate::class();
+    register_delegate_classes();
     let delegate_class = NSString::from_class(AppDelegate::class());
     UIApplication::main(None, Some(&delegate_class), main_thread);
+}
+
+/// Registers GPUI's UIKit delegate classes with the Objective-C runtime.
+///
+/// `run` registers them itself. An application calls this before `run` when it
+/// adds methods to `GPUIIosAppDelegate` that UIKit may call before GPUI's launch
+/// callback, such as a background remote-notification handler on a cold launch.
+pub fn register_delegate_classes() {
+    // UIKit can restore a scene delegate by class name without asking for a new configuration.
+    SceneDelegate::class();
+    AppDelegate::class();
 }
 
 impl IosApplicationState {
