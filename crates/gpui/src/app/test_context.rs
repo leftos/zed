@@ -672,6 +672,15 @@ impl TestAppContext {
             .clone()
     }
 
+    /// Returns every text input state change the given window has reported
+    /// to the platform, in order, so a dependent's tests can assert them.
+    pub fn text_input_state_changes(
+        &self,
+        window: AnyWindowHandle,
+    ) -> Vec<crate::TextInputStateChange> {
+        self.test_window(window).text_input_state_changes()
+    }
+
     /// Returns a stream of notifications whenever the Entity is updated.
     pub fn notifications<T: 'static>(
         &mut self,
