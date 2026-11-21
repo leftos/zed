@@ -417,6 +417,14 @@ mod tests {
         );
     }
 
+    #[test]
+    fn text_input_configuration_defaults_to_the_text_keyboard() {
+        assert_eq!(
+            TextInputConfiguration::default().keyboard,
+            crate::KeyboardKind::Text
+        );
+    }
+
     #[gpui::test]
     fn text_notifications_require_a_focused_input_and_track_field_changes(cx: &mut TestAppContext) {
         let window = cx.add_window(|_, cx| ConfigurationTestView {

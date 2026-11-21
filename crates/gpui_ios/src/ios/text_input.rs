@@ -1,6 +1,6 @@
 use super::window::{IosWindowState, WindowReference};
 use gpui::{
-    Autocapitalize, PlatformInputHandler, TextInputAction, TextInputConfiguration,
+    Autocapitalize, KeyboardKind, PlatformInputHandler, TextInputAction, TextInputConfiguration,
     TextInputStateChange, px,
 };
 use objc2::rc::{Retained, Weak};
@@ -223,7 +223,12 @@ define_class!(
 
     unsafe impl UITextInputTraits for TextInputView {
         #[unsafe(method(keyboardType))]
-        fn keyboard_type(&self) -> UIKeyboardType { UIKeyboardType::Default }
+        fn keyboard_type(&self) -> UIKeyboardType {
+            match self.ivars().configuration.borrow().keyboard {
+                KeyboardKind::Text => UIKeyboardType::Default,
+                KeyboardKind::Number => UIKeyboardType::NumberPad,
+            }
+        }
         #[unsafe(method(autocorrectionType))]
         fn autocorrection_type(&self) -> UITextAutocorrectionType {
             if self.ivars().configuration.borrow().autocorrect { UITextAutocorrectionType::Yes } else { UITextAutocorrectionType::No }
@@ -882,7 +887,9 @@ pub(super) mod tests {
             autocapitalize: Autocapitalize::Sentences,
             suggestions: true,
             input_action: TextInputAction::Search,
+            keyboard: KeyboardKind::Number,
         });
+        assert_eq!(view.keyboardType(), UIKeyboardType::NumberPad);
         assert_eq!(view.autocorrectionType(), UITextAutocorrectionType::Yes);
         assert_eq!(
             view.autocapitalizationType(),

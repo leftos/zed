@@ -2551,6 +2551,18 @@ pub struct TextInputConfiguration {
     pub suggestions: bool,
     /// The action advertised on a software keyboard's confirm ("enter") key.
     pub input_action: TextInputAction,
+    /// The kind of software keyboard the text input asks for.
+    pub keyboard: KeyboardKind,
+}
+
+/// The kind of software keyboard a text input asks for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum KeyboardKind {
+    /// The platform's general text keyboard.
+    #[default]
+    Text,
+    /// A digits-only number pad.
+    Number,
 }
 
 /// Automatic capitalization applied by software keyboards.
