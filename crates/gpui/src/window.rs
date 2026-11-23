@@ -14,9 +14,9 @@ use crate::{
     EntityId, EventEmitter, FileDropEvent, FontId, Global, GlobalElementId, GlyphId, GpuSpecs,
     Hsla, InputHandler, InputPreference, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent,
     Keystroke, KeystrokeEvent, LayoutId, LineLayoutIndex, Modifiers, ModifiersChangedEvent,
-    MonochromeSprite, MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent, Path, Pixels,
-    PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
-    PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
+    MonochromeSprite, MouseButton, MouseDownEvent, MouseEvent, MouseMoveEvent, MouseUpEvent, Path,
+    Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow,
+    Point, PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
     RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
     SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
     StrikethroughStyle, Style, SubpixelSprite, Subscription, SystemWindowTab,
@@ -6123,6 +6123,17 @@ impl Window {
         }
     }
 
+    /// Dispatches a tap as the touch recogniser does: a press and a release
+    /// through the mouse listeners at the release's position, leaving the input
+    /// modality as it was, so a replayed tap after a touch keeps hover hidden.
+    pub fn dispatch_tap(&mut self, down: MouseDownEvent, up: MouseUpEvent, cx: &mut App) {
+        self.mouse_position = up.position;
+        cx.propagate_event = true;
+        self.dispatch_mouse_event(&down, cx);
+        cx.propagate_event = true;
+        self.dispatch_mouse_event(&up, cx);
+    }
+
     fn dispatch_recognized_touch_gesture(&mut self, gesture: RecognizedTouchGesture, cx: &mut App) {
         match gesture {
             RecognizedTouchGesture::Scroll(scroll_wheel) => {
@@ -6131,11 +6142,7 @@ impl Window {
                 self.dispatch_mouse_event(&scroll_wheel, cx);
             }
             RecognizedTouchGesture::Tap { down, up } => {
-                self.mouse_position = up.position;
-                cx.propagate_event = true;
-                self.dispatch_mouse_event(&down, cx);
-                cx.propagate_event = true;
-                self.dispatch_mouse_event(&up, cx);
+                self.dispatch_tap(down, up, cx);
             }
             RecognizedTouchGesture::TouchDrag(touch_drag) => {
                 self.mouse_position = touch_drag.start_position;

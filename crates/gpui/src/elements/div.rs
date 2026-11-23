@@ -5353,6 +5353,106 @@ mod tests {
         );
     }
 
+    struct TapReplayOwner {
+        mouse_down_count: Rc<RefCell<usize>>,
+        mouse_up_count: Rc<RefCell<usize>>,
+    }
+
+    impl Render for TapReplayOwner {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let mouse_down_count = self.mouse_down_count.clone();
+            let mouse_up_count = self.mouse_up_count.clone();
+            div().size_full().child(
+                div()
+                    .id("target")
+                    .w(px(100.))
+                    .h(px(100.))
+                    .on_mouse_down(MouseButton::Left, move |_, _, _| {
+                        *mouse_down_count.borrow_mut() += 1;
+                    })
+                    .on_mouse_up(MouseButton::Left, move |_, _, _| {
+                        *mouse_up_count.borrow_mut() += 1;
+                    }),
+            )
+        }
+    }
+
+    #[test]
+    fn a_dispatched_tap_keeps_touch_modality_and_fires_once() {
+        let mut test_app = TestAppContext::single();
+        let mouse_down_count = Rc::new(RefCell::new(0));
+        let mouse_up_count = Rc::new(RefCell::new(0));
+        let window = test_app.add_window({
+            let mouse_down_count = mouse_down_count.clone();
+            let mouse_up_count = mouse_up_count.clone();
+            move |_, _| TapReplayOwner {
+                mouse_down_count,
+                mouse_up_count,
+            }
+        });
+        let any_window: AnyWindowHandle = window.into();
+
+        test_app
+            .update_window(any_window, |_, window, cx| {
+                window.draw(cx).clear(cx);
+                let started = TouchEvent {
+                    id: TouchId(1),
+                    phase: TouchPhase::Started,
+                    position: point(px(50.), px(50.)),
+                    force: None,
+                    predicted_position: None,
+                };
+                window.dispatch_event(started.clone().to_platform_input(), cx);
+                window.dispatch_event(
+                    TouchEvent {
+                        phase: TouchPhase::Cancelled,
+                        ..started
+                    }
+                    .to_platform_input(),
+                    cx,
+                );
+                assert!(
+                    window.last_input_was_touch(),
+                    "a cancelled touch should leave the window in touch modality"
+                );
+                assert_eq!(*mouse_down_count.borrow(), 0);
+                assert_eq!(*mouse_up_count.borrow(), 0);
+
+                window.dispatch_tap(
+                    MouseDownEvent {
+                        position: point(px(50.), px(50.)),
+                        button: MouseButton::Left,
+                        modifiers: Default::default(),
+                        click_count: 1,
+                        first_mouse: false,
+                    },
+                    MouseUpEvent {
+                        position: point(px(50.), px(50.)),
+                        button: MouseButton::Left,
+                        modifiers: Default::default(),
+                        click_count: 1,
+                    },
+                    cx,
+                );
+
+                assert!(
+                    window.last_input_was_touch(),
+                    "a dispatched tap should not switch the window to mouse modality"
+                );
+                assert_eq!(
+                    *mouse_down_count.borrow(),
+                    1,
+                    "a dispatched tap should fire the mouse-down listener once"
+                );
+                assert_eq!(
+                    *mouse_up_count.borrow(),
+                    1,
+                    "a dispatched tap should fire the mouse-up listener once"
+                );
+            })
+            .unwrap();
+    }
+
     #[crate::test]
     fn touch_pan_and_cancel_do_not_fire_mouse_down_out(cx: &mut TestAppContext) {
         let mouse_down_out_count = Rc::new(RefCell::new(0));
