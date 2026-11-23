@@ -1,13 +1,14 @@
 //! Conversion from UIKit events to GPUI input events.
 
+use crate::pinch::{pinch_delta, pinch_phase};
 use gpui::{
-    BackGestureEvent, BackGesturePhase, Modifiers, Pixels, Point, ScrollDelta, ScrollEvent,
-    ScrollSource, TouchId, TouchPhase, px,
+    BackGestureEvent, BackGesturePhase, Modifiers, PinchEvent, Pixels, Point, ScrollDelta,
+    ScrollEvent, ScrollSource, TouchId, TouchPhase, px,
 };
 use objc2_core_foundation::CGPoint;
 use objc2_ui_kit::{
-    UIGestureRecognizerState, UIKeyModifierFlags, UIPanGestureRecognizer, UIRectEdge,
-    UIScreenEdgePanGestureRecognizer, UITouch, UITouchPhase, UIView,
+    UIGestureRecognizerState, UIKeyModifierFlags, UIPanGestureRecognizer, UIPinchGestureRecognizer,
+    UIRectEdge, UIScreenEdgePanGestureRecognizer, UITouch, UITouchPhase, UIView,
 };
 
 /// A release faster than this, in points per second toward going back, commits
@@ -106,6 +107,33 @@ pub fn scroll_event(recognizer: &UIPanGestureRecognizer, view: &UIView) -> Optio
         modifiers: modifiers(recognizer.modifierFlags()),
         touch_phase,
         source: ScrollSource::Pointer,
+    })
+}
+
+/// Converts one step of a two-finger pinch gesture.
+///
+/// UIKit reports the scale cumulatively since the gesture began, so `last_scale`
+/// (the scale the previous step ended at, 1.0 when the gesture starts) turns
+/// each step into the relative delta `PinchEvent` carries. A finished gesture
+/// carries no delta. Returns `None` for states that carry no pinch step.
+pub fn pinch_event(
+    recognizer: &UIPinchGestureRecognizer,
+    view: &UIView,
+    last_scale: f64,
+) -> Option<PinchEvent> {
+    let phase = pinch_phase(recognizer.state().0)?;
+    let scale = recognizer.scale();
+    let delta = match phase {
+        TouchPhase::Started => pinch_delta(scale, 1.),
+        TouchPhase::Moved => pinch_delta(scale, last_scale),
+        TouchPhase::Ended | TouchPhase::Cancelled => 0.,
+    };
+    let location = recognizer.locationInView(Some(view));
+    Some(PinchEvent {
+        position: Point::new(px(location.x as f32), px(location.y as f32)),
+        delta,
+        modifiers: Modifiers::default(),
+        phase,
     })
 }
 

@@ -40,10 +40,10 @@ use objc2_ui_kit::{
 };
 use objc2_ui_kit::{
     UICornerConfiguration, UICornerRadius, UIEvent, UIGestureRecognizer,
-    UIGestureRecognizerDelegate, UIPanGestureRecognizer, UIRectCorner, UIRectEdge, UIScreen,
-    UIScreenEdgePanGestureRecognizer, UIScrollTypeMask, UITouch, UITraitCollection,
-    UITraitEnvironment, UIUserInterfaceLayoutDirection, UIUserInterfaceStyle, UIView,
-    UIViewAutoresizing, UIViewController, UIWindow, UIWindowScene,
+    UIGestureRecognizerDelegate, UIPanGestureRecognizer, UIPinchGestureRecognizer, UIRectCorner,
+    UIRectEdge, UIScreen, UIScreenEdgePanGestureRecognizer, UIScrollTypeMask, UITouch,
+    UITraitCollection, UITraitEnvironment, UIUserInterfaceLayoutDirection, UIUserInterfaceStyle,
+    UIView, UIViewAutoresizing, UIViewController, UIWindow, UIWindowScene,
 };
 use parking_lot::Mutex;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, UiKitDisplayHandle, UiKitWindowHandle};
@@ -198,6 +198,12 @@ define_class!(
             self.ivars()
                 .with_window(|window| window.handle_back_gesture(recognizer));
         }
+
+        #[unsafe(method(handlePinch:))]
+        fn handle_pinch(&self, recognizer: &UIPinchGestureRecognizer) {
+            self.ivars()
+                .with_window(|window| window.handle_pinch(recognizer));
+        }
     }
 
     unsafe impl UIGestureRecognizerDelegate for MetalView {
@@ -284,6 +290,8 @@ pub(crate) struct IosWindowState {
     keyboard_dismiss_touch: Cell<Option<KeyboardDismissTouch>>,
     /// Where the back gesture an element claimed started, while it runs.
     back_gesture_start: Cell<Option<Point<Pixels>>>,
+    /// The pinch recognizer's scale when the previous step was delivered.
+    pinch_scale: Cell<f64>,
     keyboard_height: Cell<f32>,
     /// Current mouse position (from touch)
     mouse_position: Cell<Point<Pixels>>,
@@ -400,6 +408,21 @@ impl IosWindow {
         back_recognizer.setDelegate(Some(ProtocolObject::from_ref(&*view)));
         view.addGestureRecognizer(&back_recognizer);
 
+        // A two-finger pinch gets its own recognizer. It cancels the touches it
+        // takes over, so GPUI's own recognizer abandons any pan or long press
+        // the first finger had already started.
+        let pinch_target: &AnyObject = &view;
+        // SAFETY: `MetalView` implements `handlePinch:` and owns the recognizer.
+        let pinch_recognizer = unsafe {
+            UIPinchGestureRecognizer::initWithTarget_action(
+                UIPinchGestureRecognizer::alloc(main_thread),
+                Some(pinch_target),
+                Some(sel!(handlePinch:)),
+            )
+        };
+        pinch_recognizer.setCancelsTouchesInView(true);
+        view.addGestureRecognizer(&pinch_recognizer);
+
         let view_controller = ViewController::new(main_thread);
         view_controller.setView(Some(&view));
         window.setRootViewController(Some(&view_controller));
@@ -444,6 +467,7 @@ impl IosWindow {
             insets_changed_callback: CallbackSlot::default(),
             keyboard_dismiss_touch: Cell::new(None),
             back_gesture_start: Cell::new(None),
+            pinch_scale: Cell::new(1.),
             keyboard_height: Cell::new(0.),
             mouse_position: Cell::new(Point::default()),
             modifiers: Cell::new(Modifiers::default()),
@@ -595,6 +619,22 @@ impl IosWindowState {
         }
         self.input_callback
             .with(|callback| callback(PlatformInput::BackGesture(event)));
+    }
+
+    /// Delivers one step of a two-finger pinch gesture.
+    fn handle_pinch(&self, recognizer: &UIPinchGestureRecognizer) {
+        let Some(event) = pinch_event(recognizer, &self.view, self.pinch_scale.get()) else {
+            return;
+        };
+        self.mouse_position.set(event.position);
+        // UIKit's scale is cumulative since the gesture began, so the next step
+        // is relative to this one's; a finished gesture starts over at 1.0.
+        self.pinch_scale.set(match event.phase {
+            TouchPhase::Moved => recognizer.scale(),
+            _ => 1.,
+        });
+        self.input_callback
+            .with(|callback| callback(PlatformInput::Pinch(event)));
     }
 
     fn handle_keyboard_dismiss_touch(&self, event: &TouchEvent) {

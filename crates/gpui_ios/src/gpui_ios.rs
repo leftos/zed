@@ -10,6 +10,9 @@ pub mod ios;
 #[cfg(target_os = "ios")]
 pub use ios::{IosPlatform, current_platform, register_delegate_classes};
 
+#[cfg(any(test, target_os = "ios"))]
+mod pinch;
+
 /// The foreground color used by the iOS status bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum StatusBarContentStyle {
