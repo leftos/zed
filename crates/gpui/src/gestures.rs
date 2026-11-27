@@ -1027,6 +1027,13 @@ impl TouchGestureRecognizer {
         self.momentum.is_some()
     }
 
+    /// Drops a fling's coast so the next touch starts fresh instead of
+    /// catching it, and reports whether a coast was running. No event is
+    /// emitted, so the caller owns closing the scroll stream.
+    pub(crate) fn stop_momentum(&mut self) -> bool {
+        self.momentum.take().is_some()
+    }
+
     /// Advances post-fling momentum by one frame, returning the scroll step
     /// to dispatch, or `None` when no momentum is in progress. The final step
     /// carries [`TouchPhase::Ended`] to close the synthetic scroll stream.
@@ -1773,6 +1780,57 @@ mod tests {
         assert!(closing.delta.pixel_delta(px(16.)).is_zero());
         assert_eq!(opening.touch_phase, TouchPhase::Started);
         assert!(opening.delta.pixel_delta(px(16.)).is_zero());
+    }
+
+    #[test]
+    fn stopping_momentum_lets_the_next_touch_tap() {
+        let mut recognizer = TouchGestureRecognizer::new(GestureTuning::default());
+        let now = Instant::now();
+
+        recognizer.handle_event_at(
+            &touch_event(TouchId(1), TouchPhase::Started, 100., 300.),
+            now,
+        );
+        for step in 1..=3 {
+            recognizer.handle_event_at(
+                &touch_event(
+                    TouchId(1),
+                    TouchPhase::Moved,
+                    100.,
+                    300. - step as f32 * 33.,
+                ),
+                now + Duration::from_millis(step * 16),
+            );
+        }
+        recognizer.handle_event_at(
+            &touch_event(TouchId(1), TouchPhase::Ended, 100., 200.),
+            now + Duration::from_millis(64),
+        );
+        assert!(recognizer.has_momentum());
+
+        assert!(recognizer.stop_momentum());
+        assert!(!recognizer.has_momentum());
+
+        let tap_down = now + Duration::from_millis(200);
+        let started = recognizer.handle_event_at(
+            &touch_event(TouchId(2), TouchPhase::Started, 100., 200.),
+            tap_down,
+        );
+        assert!(started.is_empty());
+        let recognized = recognizer.handle_event_at(
+            &touch_event(TouchId(2), TouchPhase::Ended, 100., 200.),
+            tap_down + Duration::from_millis(40),
+        );
+        let [RecognizedTouchGesture::Tap { .. }] = recognized.as_slice() else {
+            panic!("expected a tap and no scroll, got {recognized:?}");
+        };
+    }
+
+    #[test]
+    fn stopping_momentum_with_no_coast_returns_false() {
+        let mut recognizer = TouchGestureRecognizer::new(GestureTuning::default());
+
+        assert!(!recognizer.stop_momentum());
     }
 
     #[test]

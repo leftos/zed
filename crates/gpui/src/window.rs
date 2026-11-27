@@ -6134,6 +6134,16 @@ impl Window {
         self.dispatch_mouse_event(&up, cx);
     }
 
+    /// Stops the coast a touch fling started, so the next touch starts fresh:
+    /// it can be a tap or a new pan rather than catching the fling. The
+    /// recogniser starts the coast before it dispatches the release's scroll
+    /// `Ended`, so a listener calls this while that release is dispatched,
+    /// before any coast step has been sent; no closing event is sent. Returns
+    /// whether a coast was running.
+    pub fn stop_touch_momentum(&mut self) -> bool {
+        self.touch_gestures.stop_momentum()
+    }
+
     fn dispatch_recognized_touch_gesture(&mut self, gesture: RecognizedTouchGesture, cx: &mut App) {
         match gesture {
             RecognizedTouchGesture::Scroll(scroll_wheel) => {
